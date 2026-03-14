@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MichBar Live Pull</title>
+  <style>
+    :root {
+      --bg: #f7f2e8;
+      --panel: rgba(255, 251, 244, 0.95);
+      --ink: #201c16;
+      --muted: #6b6254;
+      --line: #d6cab6;
+      --accent: #1f5f57;
+      --accent-2: #b67a28;
+      --error: #8a2020;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(182,122,40,.16), transparent 24rem),
+        radial-gradient(circle at top right, rgba(31,95,87,.14), transparent 24rem),
+        var(--bg);
+    }
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+    }
+    .lede, .note, .status {
+      color: var(--muted);
+    }
+    .lede {
+      margin: 0 0 18px;
+      max-width: 56rem;
+      font-size: 1rem;
+    }
+    .note {
+      margin: 0 0 20px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,.7);
+      font-size: 0.95rem;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr auto auto;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    input, button {
+      font: inherit;
+    }
+    input {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.86);
+      color: var(--ink);
+    }
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-weight: 700;
+      color: #fff9f0;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #173a35);
+    }
+    button.secondary {
+      background: linear-gradient(135deg, var(--accent-2), #7b4b10);
+    }
+    button:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+    .status {
+      min-height: 22px;
+      margin: 0 0 16px;
+      font-size: 0.95rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 14px 40px rgba(32,28,22,.08);
+    }
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .meta-row {
+      padding: 9px 0;
+      border-bottom: 1px solid rgba(214,202,182,.8);
+    }
+    .meta-row:last-child {
+      border-bottom: 0;
+    }
+    .meta-row strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .88rem;
+      word-break: break-word;
+    }
+    .box {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(214,202,182,.85);
+      background: rgba(255,255,255,.72);
+    }
+    .box strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: .82rem;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--muted);
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.48;
+      font-size: .96rem;
+    }
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .error {
+      color: var(--error);
+    }
+    @media (max-width: 900px) {
+      .controls, .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <h1>MichBar Live Pull</h1>
+    <p class="lede">
+      This page is designed to be slim on the client side. It can be opened from a phone as a single HTML file,
+      as long as you point it at a deployed Worker URL that handles the cross-origin fetches.
+    </p>
+    <p class="note">
+      For Android or any local-file use, set the Worker base once and the page will remember it. The Worker handles
+      live eJournal detail fetches and opinion-asset proxying; this page extracts PDF text in-browser.
+    </p>
+
+    <section class="controls">
+      <input id="apiBaseInput" placeholder="Worker base, e.g. https://michbar-live-probe.your-subdomain.workers.dev" />
+      <input id="ejInput" placeholder="eJournal number" value="83932" />
+      <button id="loadBtn">Load Live</button>
+      <button id="clearBtn" class="secondary" type="button">Clear</button>
+    </section>
+
+    <div class="status" id="status">Idle.</div>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>eJournal</h2>
+        <div id="detailMeta"></div>
+        <div class="box">
+          <strong>Summary</strong>
+          <pre id="summaryBox" class="empty">No live detail loaded yet.</pre>
+        </div>
+        <div class="box">
+          <strong>Issues</strong>
+          <pre id="issuesBox" class="empty">No live detail loaded yet.</pre>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Opinion Text</h2>
+        <div id="opinionMeta"></div>
+        <div class="box">
+          <strong>Live Extract</strong>
+          <pre id="opinionBox" class="empty">No live opinion loaded yet.</pre>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script type="module">
+    import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.min.mjs";
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/build/pdf.worker.min.mjs";
+
+    const apiBaseInput = document.getElementById("apiBaseInput");
+    const ejInput = document.getElementById("ejInput");
+    const loadBtn = document.getElementById("loadBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const statusEl = document.getElementById("status");
+    const detailMeta = document.getElementById("detailMeta");
+    const opinionMeta = document.getElementById("opinionMeta");
+    const summaryBox = document.getElementById("summaryBox");
+    const issuesBox = document.getElementById("issuesBox");
+    const opinionBox = document.getElementById("opinionBox");
+
+    const storedBase = localStorage.getItem("liveMichbarApiBase") || "";
+    const queryBase = new URLSearchParams(location.search).get("api") || "";
+    const workerBase = "https://michbar-live-pull.gerald-case-summarizer-live.workers.dev";
+    const sameOriginDefault =
+      location.protocol.startsWith("http") &&
+      !location.hostname.endsWith("github.io") &&
+      !location.hostname.endsWith("githubusercontent.com")
+        ? location.origin
+        : "";
+    apiBaseInput.value = queryBase || storedBase || sameOriginDefault || workerBase;
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.className = isError ? "status error" : "status";
+    }
+
+    function setEmpty(node, text) {
+      node.textContent = text;
+      node.className = "empty";
+    }
+
+    function renderMeta(container, rows) {
+      container.innerHTML = "";
+      rows.filter(Boolean).forEach((row) => {
+        const item = document.createElement("div");
+        item.className = "meta-row";
+        const valueClass = row.mono ? "mono" : "";
+        item.innerHTML = `<strong>${row.label}</strong><div class="${valueClass}">${row.value || ""}</div>`;
+        container.appendChild(item);
+      });
+    }
+
+    function clearResults() {
+      detailMeta.innerHTML = "";
+      opinionMeta.innerHTML = "";
+      setEmpty(summaryBox, "No live detail loaded yet.");
+      setEmpty(issuesBox, "No live detail loaded yet.");
+      setEmpty(opinionBox, "No live opinion loaded yet.");
+      setStatus("Idle.");
+    }
+
+    function normalizeOpinionText(raw) {
+      let text = String(raw || "").replace(/\u00A0/g, " ").replace(/\r\n?/g, "\n");
+      text = text.replace(/^\s*\*{1,2}\d+\s*$/gm, "");
+      text = text.replace(/^\s*\d+\s*$/gm, "");
+      text = text.replace(/\s+\*{1,2}\d+\s+/g, " ");
+      text = text.replace(/[ \t]+\n/g, "\n");
+      text = text.replace(/-\n(?=[a-z])/g, "");
+      let prev;
+      do {
+        prev = text;
+        text = text.replace(/([^\n])\n([^\n])/g, "$1 $2");
+      } while (text !== prev);
+      text = text.replace(/[ \t]{2,}/g, " ");
+      text = text.replace(/\n{3,}/g, "\n\n");
+      return text.trim();
+    }
+
+    function repeatKey(line) {
+      return String(line || "").replace(/\s+/g, " ").trim().toLowerCase();
+    }
+
+    function joinPdfTokens(tokens) {
+      let line = "";
+      for (const token of tokens) {
+        if (!line) line = token;
+        else if (/^[,.;:)\]\?]/.test(token)) line += token;
+        else if (/[([{\/]$/.test(line)) line += token;
+        else line += ` ${token}`;
+      }
+      return line;
+    }
+
+    function extractLinesFromPdfPage(content) {
+      const items = (content.items || []).filter((item) => typeof item.str === "string");
+      const lines = [];
+      let current = [];
+      let lastY = null;
+      for (const item of items) {
+        const y = item.transform ? item.transform[5] : null;
+        const str = item.str || "";
+        if (lastY !== null && y !== null && Math.abs(y - lastY) > 2.5 && current.length) {
+          lines.push(joinPdfTokens(current));
+          current = [];
+        }
+        if (str) current.push(str);
+        lastY = y;
+        if (item.hasEOL && current.length) {
+          lines.push(joinPdfTokens(current));
+          current = [];
+          lastY = null;
+        }
+      }
+      if (current.length) lines.push(joinPdfTokens(current));
+      return lines.map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+    }
+
+    function stripRepeatedPageNoise(pages) {
+      const freq = new Map();
+      for (const lines of pages) {
+        const candidates = [...lines.slice(0, 6), ...lines.slice(-6)];
+        const seen = new Set();
+        for (const line of candidates) {
+          const key = repeatKey(line);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          freq.set(key, (freq.get(key) || 0) + 1);
+        }
+      }
+      const threshold = pages.length >= 4 ? Math.ceil(pages.length / 2) : 2;
+      const repeated = new Set(
+        [...freq.entries()]
+          .filter(([key, count]) => count >= threshold && key.length <= 140)
+          .map(([key]) => key)
+      );
+      return pages.map((lines) =>
+        lines.filter((line) => {
+          const key = repeatKey(line);
+          if (!key) return false;
+          if (/^page\s+\d+(\s+of\s+\d+)?$/i.test(key)) return false;
+          if (/^\d+$/.test(key)) return false;
+          if (repeated.has(key)) return false;
+          return true;
+        })
+      );
+    }
+
+    async function extractPdfText(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`PDF proxy fetch failed: HTTP ${response.status}`);
+      }
+      const bytes = await response.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const pages = [];
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        pages.push(extractLinesFromPdfPage(content));
+      }
+      const strippedPages = stripRepeatedPageNoise(pages);
+      const joined = strippedPages.map((lines) => lines.join("\n")).join("\n\n");
+      return normalizeOpinionText(joined);
+    }
+
+    async function loadLive() {
+      const apiBase = apiBaseInput.value.trim().replace(/\/+$/, "");
+      const ej = ejInput.value.trim();
+
+      if (!apiBase) {
+        setStatus("Set the Worker base first.", true);
+        return;
+      }
+      if (!ej) {
+        setStatus("Enter an eJournal number.", true);
+        return;
+      }
+
+      localStorage.setItem("liveMichbarApiBase", apiBase);
+      loadBtn.disabled = true;
+      setStatus("Loading live eJournal detail...");
+
+      try {
+        const url = `${apiBase}/api/load?ej=${encodeURIComponent(ej)}`;
+        const response = await fetch(url, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        const detail = payload.detail || {};
+        const opinion = payload.opinion || {};
+
+        renderMeta(detailMeta, [
+          { label: "eJournal Number", value: payload.ejournal_number || ej },
+          { label: "Case Name", value: detail.case_name_guess || "" },
+          { label: "Court", value: detail.court || "" },
+          { label: "Opinion Date", value: detail.opinion_date || "" },
+          { label: "Opinion Type", value: detail.opinion_type || "" },
+          { label: "Detail URL", value: detail.detail_url || "", mono: true },
+          { label: "Recovered Opinion URL", value: detail.opinion_url || "", mono: true },
+        ]);
+
+        summaryBox.textContent = detail.summary_text || "No summary text parsed from the live detail page.";
+        summaryBox.className = detail.summary_text ? "" : "empty";
+        issuesBox.textContent = detail.issues_text || "No issues text parsed from the live detail page.";
+        issuesBox.className = detail.issues_text ? "" : "empty";
+
+        renderMeta(opinionMeta, [
+          { label: "Final Opinion URL", value: opinion.opinion_url || "", mono: true },
+          { label: "Proxy URL", value: opinion.proxied_url || "", mono: true },
+          { label: "Kind", value: opinion.kind || "" },
+          { label: "Content Type", value: opinion.content_type || "" },
+        ]);
+
+        if (opinion.kind === "html") {
+          opinionBox.textContent = opinion.text || "No text extracted from the HTML opinion.";
+          opinionBox.className = opinion.text ? "" : "empty";
+          setStatus("Loaded live detail and HTML opinion text.");
+          return;
+        }
+
+        if (opinion.kind === "pdf" && opinion.proxied_url) {
+          setStatus("Loading live PDF and extracting text in-browser...");
+          const text = await extractPdfText(opinion.proxied_url);
+          opinionBox.textContent = text || "No text extracted from the PDF.";
+          opinionBox.className = text ? "" : "empty";
+          setStatus("Loaded live detail and PDF opinion text.");
+          return;
+        }
+
+        setEmpty(opinionBox, "Opinion asset loaded, but its type was not recognized.");
+        setStatus("Loaded live detail, but opinion extraction was not possible.", true);
+      } catch (error) {
+        setStatus(`Load failed: ${error.message}`, true);
+      } finally {
+        loadBtn.disabled = false;
+      }
+    }
+
+    loadBtn.addEventListener("click", loadLive);
+    clearBtn.addEventListener("click", clearResults);
+  </script>
+</body>
+</html>
